@@ -1,0 +1,62 @@
+name = "sjsubs-worker"                 # ⚠️ CHECK: must match your EXISTING worker's name exactly
+                                        # (Cloudflare dashboard → Workers & Pages → your worker's name is shown at the top)
+main = "src/index.js"                  # path to your worker code inside the repo (rename test.html → src/index.js)
+compatibility_date = "2024-09-23"
+
+# ===== ROUTES (so sjsubs.online keeps pointing at this worker) =====
+[[routes]]
+pattern = "sjsubs.online/*"
+zone_name = "sjsubs.online"
+
+# ===== R2 BUCKET BINDING (payment screenshots) =====
+# ⚠️ CHECK current values: Cloudflare dashboard → Workers & Pages → your worker →
+# Settings → Bindings → find the R2 binding row. "binding" name MUST stay BUCKET
+# (the code uses env.BUCKET) — bucket_name must match your actual R2 bucket name.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "productsimages"    # ⚠️ REPLACE with your real bucket name
+
+# ===== KV NAMESPACE BINDING (product/category page cache) =====
+# ⚠️ CHECK current value: Cloudflare dashboard → Workers & Pages → your worker →
+# Settings → Bindings → find the KV row → copy its Namespace ID from there,
+# OR: Workers & Pages → KV (left sidebar) → find the namespace → copy its ID.
+# "binding" name MUST stay SJSUBS_KV (the code uses env.SJSUBS_KV).
+[[kv_namespaces]]
+binding = "SJSUBS_KV"
+id = "sjsubs_kv"       # ⚠️ REPLACE with your real KV namespace ID
+
+# ===== PLAIN VARIABLES (not secret — fine to keep in this file / GitHub) =====
+[vars]
+PUBLIC_BASE_URL   = "https://pub-ff89663c49194160a3e905fbdf198fc9.r2.dev"  # ⚠️ CHECK this matches your R2 public bucket URL
+SITE_URL          = "https://sjsubs.online"
+WHATSAPP_ADMIN1   = "923447814644"
+WHATSAPP_ADMIN2   = "923093623834"
+NOTIFY_EMAIL      = "sufiangsufiang50@gmail.com"
+EMAILJS_SERVICE_ID   = "service_cnflm3l"
+EMAILJS_TEMPLATE_ID  = "template_zqxls3k"
+EMAILJS_PUBLIC_KEY   = "zL7lT3h0aygc_IS_H"
+
+# Optional — only set these if you actually configured real payment account details
+# (right now the site is showing placeholder numbers like 0300-0000000, so you
+# probably want to add these too, with your real account info):
+# JAZZCASH_NUMBER   = "03XX-XXXXXXX"
+# JAZZCASH_TITLE    = "Your Name"
+# EASYPAISA_NUMBER  = "03XX-XXXXXXX"
+# EASYPAISA_TITLE   = "Your Name"
+# BANK_NAME         = "Your Bank"
+# BANK_ACCOUNT      = "PKXX XXXX XXXX XXXX XXXX XXXX"
+# BANK_TITLE        = "Your Name"
+
+# ===== SECRETS — DO NOT put these here / DO NOT commit them to GitHub =====
+# These must be set separately in the Cloudflare dashboard so they never appear
+# in your repo:
+#   Cloudflare dashboard → your worker → Settings → Variables and Secrets →
+#   Add variable → set "Type" to Secret → paste the value → Save.
+#
+# Set all of these as Secrets (copy the CURRENT values from your worker's
+# existing Settings → Variables page before you switch to Git deploy, so
+# you don't lose them):
+#   FIRESTORE_API_KEY     (Firestore REST API key — required, site breaks without it)
+#   ADMIN_UPLOAD_KEY       (admin panel auth key — required for /admin routes)
+#   EMAILJS_PRIVATE_KEY    = "cqexJMeEoOTN2KfQzomSG"
+#   SESSION_SECRET          (long random string — for login session cookies)
