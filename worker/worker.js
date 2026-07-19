@@ -256,6 +256,30 @@ const COMMON_CSS = `
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     flex:1; min-width:0;
   }
+  .header-auth{margin-left:auto; flex-shrink:0;}
+  .profile-wrap{position:relative;}
+  .profile-btn{
+    width:42px; height:42px; border-radius:50%;
+    background:var(--primary-light); color:var(--ink);
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px; border:1px solid var(--line); cursor:pointer; transition:.2s;
+  }
+  .profile-btn:hover{background:var(--line);}
+  .profile-dropdown{
+    display:none; position:absolute; right:0; top:calc(100% + 10px);
+    background:var(--surface); border:1.5px solid var(--line); border-radius:12px;
+    box-shadow:0 10px 28px rgba(0,0,0,.14); min-width:190px; overflow:hidden; z-index:80;
+  }
+  .profile-dropdown.show{display:block;}
+  .profile-name{
+    padding:14px 16px; font-size:13.5px; font-weight:700; color:var(--ink);
+    border-bottom:1px solid var(--line); word-break:break-word;
+  }
+  .profile-logout-btn{
+    display:flex; align-items:center; gap:8px; width:100%; padding:12px 16px;
+    background:none; text-align:left; font-size:13.5px; font-weight:700; color:var(--danger);
+  }
+  .profile-logout-btn:hover{background:var(--primary-light);}
 
   main{flex:1; width:100%;}
   .section{padding:36px 0;}
@@ -711,6 +735,7 @@ ${extraMeta}
       </a>
       <a href="/"><img src="${LOGO_URL}" alt="SJsubs Logo" class="header-logo" onerror="this.style.display='none'"></a>
       ${pageTitle ? `<span class="header-title">${escapeHtml(pageTitle)}</span>` : ''}
+      <div class="header-auth" id="headerAuthWrap"></div>
     </div>
   </header>
   <script>
@@ -723,6 +748,32 @@ ${extraMeta}
       }
       // otherwise let the href="${fallbackUrl}" take over naturally
     });
+  </script>
+  <script>
+    // Profile icon: this page's HTML is cached/shared across visitors, so login
+    // state can't be baked in server-side — it's fetched per-visitor on load instead.
+    (function(){
+      fetch('/api/me').then(function(r){ return r.json(); }).then(function(res){
+        if (!res || !res.loggedIn) return;
+        var wrap = document.getElementById('headerAuthWrap');
+        if (!wrap) return;
+        wrap.innerHTML = '<div class="profile-wrap">'
+          + '<button type="button" class="profile-btn" id="profileBtn"><i class="fa-solid fa-user"></i></button>'
+          + '<div class="profile-dropdown" id="profileDropdown">'
+          + '<div class="profile-name" id="profileNameEl"></div>'
+          + '<button type="button" class="profile-logout-btn" id="profileLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i> Log Out</button>'
+          + '</div></div>';
+        document.getElementById('profileNameEl').textContent = res.name || res.email || 'Account';
+
+        var btn = document.getElementById('profileBtn');
+        var dd = document.getElementById('profileDropdown');
+        btn.addEventListener('click', function(e){ e.stopPropagation(); dd.classList.toggle('show'); });
+        document.addEventListener('click', function(){ dd.classList.remove('show'); });
+        document.getElementById('profileLogoutBtn').addEventListener('click', function(){
+          fetch('/api/logout', { method: 'POST' }).then(function(){ window.location.href = '/'; });
+        });
+      }).catch(function(){});
+    })();
   </script>
   <main>`;
 }
@@ -1883,6 +1934,20 @@ export default {
       }
 
       // ==========================================
+      // 🚪 ROUTE: LOG OUT (clears the session cookie)
+      // ==========================================
+      if (path === "/api/logout") {
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Set-Cookie": "sjsubs_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+            ...corsHeaders()
+          }
+        });
+      }
+
+      // ==========================================
       // ⭐ ROUTE: SUBMIT PRODUCT REVIEW (public, no admin key required)
       // ==========================================
       if (path === "/api/review") {
@@ -2097,6 +2162,12 @@ export default {
     // ==========================================
 
     try {
+      // ===== /api/me (used by the header to show/hide the profile icon) =====
+      if (path === '/api/me') {
+        const user = await getLoggedInUser(request, env);
+        return json({ loggedIn: !!user, name: user ? user.name : null, email: user ? user.email : null }, 200);
+      }
+
       // ===== /category/:name =====
       if (path.startsWith('/category/')) {
         const categoryName = decodeURIComponent(path.replace('/category/', ''));
