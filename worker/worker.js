@@ -1540,6 +1540,7 @@ function buildPaymentPage(params, env, loggedInUser) {
           .then(function(res){
             if (res && res.success) {
               console.log('EmailJS notification result:', res.emailDebug);
+              console.log('Welcome email result:', res.welcomeEmailDebug);
               document.getElementById('orderFormWrap').style.display = 'none';
               var box = document.getElementById('orderSuccessBox');
               box.style.display = 'block';
@@ -1688,6 +1689,38 @@ async function sendOrderNotificationEmail(env, order) {
     return { ok: false, status: res.status, error: errText };
   }
   return { ok: true };
+}
+
+// Sends the customer-facing "welcome / thank you" email by calling the second,
+// dedicated email-sending worker (bound as env.EMAIL_WORKER — see wrangler.toml).
+// That worker doesn't exist yet; once it's built and deployed, it just needs to
+// handle a POST to /send-welcome with this JSON body and send the email itself
+// (e.g. via its own EmailJS call) using the professional welcome-email template.
+async function sendWelcomeEmail(env, data) {
+  if (!env.EMAIL_WORKER) {
+    return { ok: false, error: "EMAIL_WORKER service binding not connected yet (second worker not deployed)." };
+  }
+  try {
+    const res = await env.EMAIL_WORKER.fetch("https://email-worker.internal/send-welcome", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: data.customerName,
+        customer_email: data.customerEmail,
+        product_name: data.productName,
+        order_time: new Date().toLocaleString("en-PK", { timeZone: "Asia/Karachi" })
+      })
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(function(){ return ""; });
+      console.log("Welcome email failed:", res.status, errText);
+      return { ok: false, status: res.status, error: errText };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.log("Welcome email error:", err);
+    return { ok: false, error: String(err) };
+  }
 }
 
 // ========== FIRESTORE WRITE HELPERS (for reviews) ==========
@@ -1966,7 +1999,11 @@ export default {
             screenshotUrl
           }).catch(function(err){ return { ok: false, error: String(err) }; });
 
-          return json({ success: true, emailDebug: emailResult }, 200);
+          const welcomeEmailResult = await sendWelcomeEmail(env, {
+            customerName, customerEmail, productName
+          }).catch(function(err){ return { ok: false, error: String(err) }; });
+
+          return json({ success: true, emailDebug: emailResult, welcomeEmailDebug: welcomeEmailResult }, 200);
         } catch (err) {
           return json({ error: "Failed to submit order", detail: String(err) }, 500);
         }
