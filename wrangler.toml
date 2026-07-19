@@ -1,6 +1,6 @@
 name = "smm"                 # ⚠️ CHECK: must match your EXISTING worker's name exactly
                                         # (Cloudflare dashboard → Workers & Pages → your worker's name is shown at the top)
-main = "src/index.js"                  # path to your worker code inside the repo (rename test.html → src/index.js)
+main = "src/worker.js"                  # path to your worker code inside the repo (rename test.html → src/worker.js)
 compatibility_date = "2024-09-23"
 
 # ===== ROUTES (so sjsubs.online keeps pointing at this worker) =====
