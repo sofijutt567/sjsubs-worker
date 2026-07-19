@@ -1,32 +1,53 @@
-name = "smm"                           # ✅ confirmed from your dashboard screenshot — matches your existing worker
+name = "smm"                           # confirmed from your dashboard
 main = "worker/worker.js"              # matches the file path in your repo (sofijutt567/sjsubs-worker)
-compatibility_date = "2024-09-23"
+compatibility_date = "2026-07-15"      # ✅ fixed — matches your worker's real remote value (from the build log diff)
+workers_dev = true                     # ✅ fixed — was being turned off by mistake
+preview_urls = true                    # ✅ fixed — was being turned off by mistake
 
-# ===== ROUTES (so sjsubs.online keeps pointing at this worker) =====
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+
+# ===== ROUTES (real routes, taken from your build log diff) =====
 [[routes]]
-pattern = "sjsubs.online/*"
+pattern = "sjsubs.online/all-products"
+zone_name = "sjsubs.online"
+
+[[routes]]
+pattern = "sjsubs.online/api/*"
+zone_name = "sjsubs.online"
+
+[[routes]]
+pattern = "sjsubs.online/category/*"
+zone_name = "sjsubs.online"
+
+[[routes]]
+pattern = "sjsubs.online/payment.html"
+zone_name = "sjsubs.online"
+
+[[routes]]
+pattern = "sjsubs.online/payment.html*"
+zone_name = "sjsubs.online"
+
+[[routes]]
+pattern = "sjsubs.online/product/*"
 zone_name = "sjsubs.online"
 
 # ===== R2 BUCKET BINDING (payment screenshots) =====
-# ⚠️ CHECK current values: Cloudflare dashboard → Workers & Pages → your worker →
-# Settings → Bindings → find the R2 binding row. "binding" name MUST stay BUCKET
-# (the code uses env.BUCKET) — bucket_name must match your actual R2 bucket name.
 [[r2_buckets]]
 binding = "BUCKET"
-bucket_name = "your-r2-bucket-name"    # ⚠️ REPLACE with your real bucket name
+bucket_name = "productsimages"         # ✅ fixed — your real bucket name (from the build log diff)
 
 # ===== KV NAMESPACE BINDING (product/category page cache) =====
-# ⚠️ CHECK current value: Cloudflare dashboard → Workers & Pages → your worker →
-# Settings → Bindings → find the KV row → copy its Namespace ID from there,
-# OR: Workers & Pages → KV (left sidebar) → find the namespace → copy its ID.
-# "binding" name MUST stay SJSUBS_KV (the code uses env.SJSUBS_KV).
 [[kv_namespaces]]
 binding = "SJSUBS_KV"
-id = "your-kv-namespace-id-here"       # ⚠️ REPLACE with your real KV namespace ID
+id = "ae6cca8649af4a699c1dab3a1d652e1a"   # ✅ fixed — your real KV namespace ID (from the build log diff)
 
 # ===== PLAIN VARIABLES (not secret — fine to keep in this file / GitHub) =====
 [vars]
-PUBLIC_BASE_URL   = "https://pub-ff89663c49194160a3e905fbdf198fc9.r2.dev"  # ⚠️ CHECK this matches your R2 public bucket URL
+PUBLIC_BASE_URL   = "https://pub-ff89663c49194160a3e905fbdf198fc9.r2.dev"
 SITE_URL          = "https://sjsubs.online"
 WHATSAPP_ADMIN1   = "923447814644"
 WHATSAPP_ADMIN2   = "923093623834"
@@ -36,8 +57,7 @@ EMAILJS_TEMPLATE_ID  = "template_zqxls3k"
 EMAILJS_PUBLIC_KEY   = "zL7lT3h0aygc_IS_H"
 
 # Optional — only set these if you actually configured real payment account details
-# (right now the site is showing placeholder numbers like 0300-0000000, so you
-# probably want to add these too, with your real account info):
+# (right now the site is showing placeholder numbers like 0300-0000000):
 # JAZZCASH_NUMBER   = "03XX-XXXXXXX"
 # JAZZCASH_TITLE    = "Your Name"
 # EASYPAISA_NUMBER  = "03XX-XXXXXXX"
@@ -47,15 +67,10 @@ EMAILJS_PUBLIC_KEY   = "zL7lT3h0aygc_IS_H"
 # BANK_TITLE        = "Your Name"
 
 # ===== SECRETS — DO NOT put these here / DO NOT commit them to GitHub =====
-# These must be set separately in the Cloudflare dashboard so they never appear
-# in your repo:
-#   Cloudflare dashboard → your worker → Settings → Variables and Secrets →
-#   Add variable → set "Type" to Secret → paste the value → Save.
-#
-# Set all of these as Secrets (copy the CURRENT values from your worker's
-# existing Settings → Variables page before you switch to Git deploy, so
-# you don't lose them):
-#   FIRESTORE_API_KEY     (Firestore REST API key — required, site breaks without it)
-#   ADMIN_UPLOAD_KEY       (admin panel auth key — required for /admin routes)
-#   EMAILJS_PRIVATE_KEY    = "cqexJMeEoOTN2KfQzomSG"
-#   SESSION_SECRET          (long random string — for login session cookies)
+# Set these in: Cloudflare dashboard → worker "smm" → Settings →
+# Variables and Secrets → Add variable → Type = Secret → paste value → Save.
+# (Copy their current values from the dashboard before you forget them.)
+#   FIRESTORE_API_KEY      (required — site breaks without it)
+#   ADMIN_UPLOAD_KEY        (required for /admin routes)
+#   EMAILJS_PRIVATE_KEY     = "cqexJMeEoOTN2KfQzomSG"
+#   SESSION_SECRET           (long random string — login session cookies)
