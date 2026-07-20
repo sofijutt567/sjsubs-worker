@@ -1591,7 +1591,7 @@ function buildPaymentPage(params, env, loggedInUser) {
           .then(function(res){
             if (res && res.success) {
               console.log('EmailJS notification result:', res.emailDebug);
-              console.log('Welcome email result:', res.welcomeEmailDebug);
+              console.log('Order confirmation email result:', res.orderConfirmDebug);
               document.getElementById('orderFormWrap').style.display = 'none';
               var box = document.getElementById('orderSuccessBox');
               box.style.display = 'block';
@@ -1742,34 +1742,27 @@ async function sendOrderNotificationEmail(env, order) {
   return { ok: true };
 }
 
-// Sends the customer-facing "welcome / thank you" email by calling the second,
-// dedicated email-sending worker (bound as env.EMAIL_WORKER — see wrangler.toml).
-// That worker doesn't exist yet; once it's built and deployed, it just needs to
-// handle a POST to /send-welcome with this JSON body and send the email itself
-// (e.g. via its own EmailJS call) using the professional welcome-email template.
-async function sendWelcomeEmail(env, data) {
+// Calls the second, dedicated email-sending worker (bound as env.EMAIL_WORKER —
+// see wrangler.toml) to send one of the customer-facing emails. `path` is either
+// "/send-order-confirmation" or "/send-welcome" (handled by that worker).
+async function callEmailWorker(env, path, body) {
   if (!env.EMAIL_WORKER) {
     return { ok: false, error: "EMAIL_WORKER service binding not connected yet (second worker not deployed)." };
   }
   try {
-    const res = await env.EMAIL_WORKER.fetch("https://email-worker.internal/send-welcome", {
+    const res = await env.EMAIL_WORKER.fetch("https://email-worker.internal" + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer_name: data.customerName,
-        customer_email: data.customerEmail,
-        product_name: data.productName,
-        order_time: new Date().toLocaleString("en-PK", { timeZone: "Asia/Karachi" })
-      })
+      body: JSON.stringify(body)
     });
     if (!res.ok) {
       const errText = await res.text().catch(function(){ return ""; });
-      console.log("Welcome email failed:", res.status, errText);
+      console.log("Email worker call failed:", path, res.status, errText);
       return { ok: false, status: res.status, error: errText };
     }
     return { ok: true };
   } catch (err) {
-    console.log("Welcome email error:", err);
+    console.log("Email worker call error:", path, err);
     return { ok: false, error: String(err) };
   }
 }
@@ -1892,6 +1885,12 @@ export default {
           const userId = created.name.split("/").pop();
 
           const token = await createSessionToken(env, { id: userId, name, email });
+
+          ctx.waitUntil(callEmailWorker(env, "/send-welcome", {
+            customer_name: name,
+            customer_email: email
+          }).catch(function(err){ console.log("Welcome email error:", err); }));
+
           return new Response(JSON.stringify({ success: true, name, email }), {
             status: 200,
             headers: { "Content-Type": "application/json", "Set-Cookie": sessionCookieHeader(token), ...corsHeaders() }
@@ -2064,11 +2063,14 @@ export default {
             screenshotUrl
           }).catch(function(err){ return { ok: false, error: String(err) }; });
 
-          const welcomeEmailResult = await sendWelcomeEmail(env, {
-            customerName, customerEmail, productName
+          const orderConfirmResult = await callEmailWorker(env, "/send-order-confirmation", {
+            customer_name: customerName,
+            customer_email: customerEmail,
+            product_name: productName,
+            order_time: new Date().toLocaleString("en-PK", { timeZone: "Asia/Karachi" })
           }).catch(function(err){ return { ok: false, error: String(err) }; });
 
-          return json({ success: true, emailDebug: emailResult, welcomeEmailDebug: welcomeEmailResult }, 200);
+          return json({ success: true, emailDebug: emailResult, orderConfirmDebug: orderConfirmResult }, 200);
         } catch (err) {
           return json({ error: "Failed to submit order", detail: String(err) }, 500);
         }
