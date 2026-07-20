@@ -1742,15 +1742,17 @@ async function sendOrderNotificationEmail(env, order) {
   return { ok: true };
 }
 
-// Calls the second, dedicated email-sending worker (bound as env.EMAIL_WORKER —
-// see wrangler.toml) to send one of the customer-facing emails. `path` is either
+// Calls the second, dedicated email-sending worker over plain HTTP (no service
+// binding needed — just a normal fetch to its public URL). `path` is either
 // "/send-order-confirmation" or "/send-welcome" (handled by that worker).
+// Override the URL via env.EMAIL_WORKER_URL in the Cloudflare dashboard if it
+// ever moves; otherwise it defaults to the deployed email worker below.
+const DEFAULT_EMAIL_WORKER_URL = "https://emailsmm.graphixstudio561.workers.dev";
+
 async function callEmailWorker(env, path, body) {
-  if (!env.EMAIL_WORKER) {
-    return { ok: false, error: "EMAIL_WORKER service binding not connected yet (second worker not deployed)." };
-  }
+  const baseUrl = (env && env.EMAIL_WORKER_URL) || DEFAULT_EMAIL_WORKER_URL;
   try {
-    const res = await env.EMAIL_WORKER.fetch("https://email-worker.internal" + path, {
+    const res = await fetch(baseUrl + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
