@@ -1664,6 +1664,7 @@ function buildPaymentPage(params, env, loggedInUser) {
           fd.append('category', ${JSON.stringify(category)});
           fd.append('duration', ${JSON.stringify(duration)});
           fd.append('price', ${JSON.stringify(String(price))});
+          fd.append('image', ${JSON.stringify(image)});
         }
         fd.append('paymentMethod', selectedMethod);
         fd.append('customerName', custName);
@@ -2167,6 +2168,7 @@ export default {
                 productSlug: String((it && it.productSlug) || "").trim().slice(0, 200),
                 category: String((it && it.category) || "").trim().slice(0, 100),
                 duration: String((it && it.duration) || "").trim().slice(0, 100),
+                image: String((it && it.image) || "").trim().slice(0, 500),
                 price: Number((it && it.price) || 0),
                 qty: Math.max(1, Number((it && it.qty) || 1))
               }))
@@ -2189,6 +2191,7 @@ export default {
                 productSlug: it.productSlug,
                 category: it.category,
                 duration: it.duration,
+                image: it.image,
                 price: it.price * it.qty,
                 ...commonFields
               });
@@ -2204,6 +2207,7 @@ export default {
             const productSlug = (formData.get("productSlug") || "").toString().trim().slice(0, 200);
             const category = (formData.get("category") || "").toString().trim().slice(0, 100);
             const duration = (formData.get("duration") || "").toString().trim().slice(0, 100);
+            const image = (formData.get("image") || "").toString().trim().slice(0, 500);
             const price = Number(formData.get("price") || 0);
 
             if (!productName) {
@@ -2212,7 +2216,7 @@ export default {
 
             await addFirestoreDocument(env, "orders", {
               userUid: loggedInUser.uid,
-              productName, productSlug, category, duration, price,
+              productName, productSlug, category, duration, image, price,
               ...commonFields
             });
 
