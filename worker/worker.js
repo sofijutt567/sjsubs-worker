@@ -10,6 +10,8 @@
 //   GET  /product/:slug        → Product detail page (KV cached + SEO)
 //   GET  /all-products         → All products page (KV cached)
 //   GET  /payment.html         → WhatsApp checkout / order confirmation page
+//   GET  /api/me                → Current login status (JSON)
+//   GET  /api/my-orders         → Logged-in user's orders (JSON, requires session cookie)
 //   GET  /*                    → 404 Professional page
 // ============================================
 
@@ -1823,6 +1825,15 @@ async function getReviewsBySlug(env, slug) {
   });
 }
 
+// Orders placed by a specific logged-in user (used by the "My Orders" drawer on the user panel).
+async function getOrdersByUser(env, uid) {
+  return queryFirestore(env, {
+    from: [{ collectionId: "orders" }],
+    where: { fieldFilter: { field: { fieldPath: "userUid" }, op: "EQUAL", value: { stringValue: uid } } },
+    orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }]
+  });
+}
+
 // ========== KV HELPERS ==========
 
 async function getFromKV(env, key) {
@@ -2170,6 +2181,14 @@ export default {
       if (path === '/api/me') {
         const user = await getLoggedInUser(request, env);
         return json({ loggedIn: !!user, name: user ? user.name : null, email: user ? user.email : null }, 200);
+      }
+
+      // ===== /api/my-orders (used by the "My Orders" drawer on the user panel) =====
+      if (path === '/api/my-orders') {
+        const user = await getLoggedInUser(request, env);
+        if (!user) return json({ error: "Not logged in" }, 401);
+        const orders = await getOrdersByUser(env, user.uid);
+        return json({ orders: orders }, 200);
       }
 
       // ===== /category/:name =====
