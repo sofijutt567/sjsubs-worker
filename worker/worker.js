@@ -561,6 +561,19 @@ const COMMON_CSS = `
   .checkout-row{display:flex; justify-content:space-between; align-items:center; padding:9px 0; font-size:14px;}
   .checkout-row.total{border-top:1px dashed var(--line); margin-top:6px; padding-top:14px; font-size:17px; font-weight:800;}
   .checkout-row .lbl{color:var(--muted);}
+  .checkout-cart-item{display:flex; gap:14px; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line);}
+  .checkout-cart-item:last-child{border-bottom:none;}
+  .checkout-cart-item .thumb{
+    width:56px; height:56px; border-radius:10px; overflow:hidden; flex-shrink:0;
+    background:linear-gradient(135deg,var(--primary-light),#F5F5F5);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .checkout-cart-item .thumb img{width:100%;height:100%;object-fit:cover;}
+  .checkout-cart-item .thumb i{font-size:20px; color:var(--muted);}
+  .checkout-cart-item .info{flex:1; min-width:0;}
+  .checkout-cart-item .info h4{font-size:14px; font-weight:700; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .checkout-cart-item .info .qty{font-size:12px; color:var(--muted);}
+  .checkout-cart-item .line-price{font-weight:800; font-size:14px; flex-shrink:0;}
   .checkout-note{
     display:flex; gap:10px; align-items:flex-start; background:var(--accent-light);
     color:var(--accent-dark); padding:14px 16px; border-radius:12px; font-size:13.5px;
@@ -1226,10 +1239,11 @@ function buildPaymentPage(params, env, loggedInUser) {
   const category = params.get('category') || '';
   const slug = params.get('slug') || '';
   const duration = params.get('duration') || '';
+  const isCart = params.get('mode') === 'cart'; // true when arriving from the cart drawer's "Checkout" button — items come from localStorage, not query params
 
   let html = buildHeader(slug ? `/product/${encodeURIComponent(slug)}` : '/', "Checkout");
 
-  if (!name) {
+  if (!name && !isCart) {
     html += `<div class="container"><section class="section"><div class="checkout-wrap"><div class="checkout-card"><div class="checkout-empty"><i class="fa-solid fa-cart-shopping"></i>No product selected. Please go back and choose a product to order.</div></div><div style="text-align:center;"><a href="/all-products" class="btn-home"><i class="fa-solid fa-grid-2"></i> Browse Products</a></div></div></section></div>`;
     html += buildFooter();
     return html;
@@ -1259,6 +1273,16 @@ function buildPaymentPage(params, env, loggedInUser) {
       <div class="breadcrumb"><a href="/">Home</a><i class="fa-solid fa-chevron-right"></i><span>Checkout</span></div>
       <div class="page-head" style="margin-bottom:20px;"><div><h1 style="font-size:23px;">Confirm Your Order</h1></div></div>
 
+      ${isCart ? `
+      <div class="checkout-card" id="cartCheckoutCard">
+        <div id="cartCheckoutItems"></div>
+        <div class="checkout-rows">
+          <div class="checkout-row"><span class="lbl">Delivery</span><span>Digital — Instant</span></div>
+          <div class="checkout-row total"><span>Total</span><span id="cartCheckoutTotal">₨0</span></div>
+        </div>
+      </div>
+      <div id="cartCheckoutEmpty" style="display:none;"><div class="checkout-card"><div class="checkout-empty"><i class="fa-solid fa-cart-shopping"></i>Your cart is empty. Please add a product before checking out.</div></div><div style="text-align:center;"><a href="/all-products" class="btn-home"><i class="fa-solid fa-grid-2"></i> Browse Products</a></div></div>
+      ` : `
       <div class="checkout-card">
         <div class="checkout-prod">
           <div class="thumb">${thumb}</div>
@@ -1275,6 +1299,7 @@ function buildPaymentPage(params, env, loggedInUser) {
           <div class="checkout-row total"><span>Total</span><span>${money(price)}</span></div>
         </div>
       </div>
+      `}
 
       <div id="orderSuccessBox" style="display:none;"></div>
 
@@ -1354,6 +1379,62 @@ function buildPaymentPage(params, env, loggedInUser) {
   </section></div>
   <script>
   (function(){
+    function fmtMoney(n){ return "₨" + Number(n || 0).toLocaleString(); }
+
+    // ===== Cart checkout mode (arrived via the cart drawer's "Checkout" button) =====
+    // The cart itself lives in the browser's localStorage (same domain as the homepage),
+    // so we read it directly here instead of passing it through the URL.
+    var isCartCheckout = ${JSON.stringify(isCart)};
+    var cartCheckoutData = [];
+
+    if (isCartCheckout) {
+      var rawCart = [];
+      try { rawCart = JSON.parse(localStorage.getItem('sjsubs_cart')) || []; } catch (e) { rawCart = []; }
+
+      var cardEl = document.getElementById('cartCheckoutCard');
+      var emptyEl = document.getElementById('cartCheckoutEmpty');
+
+      if (!rawCart.length) {
+        if (cardEl) cardEl.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'block';
+        var wrapForm = document.getElementById('orderFormWrap');
+        if (wrapForm) wrapForm.style.display = 'none';
+        var authWrap = document.getElementById('authGateWrap');
+        if (authWrap) authWrap.style.display = 'none';
+      } else {
+        cartCheckoutData = rawCart.map(function(i){
+          return {
+            productName: i.name || '',
+            productSlug: i.slug || '',
+            category: i.category || '',
+            duration: i.duration || '',
+            price: Number(i.price) || 0,
+            qty: Number(i.qty) || 1,
+            image: i.image || ''
+          };
+        });
+
+        var itemsHtml = cartCheckoutData.map(function(i){
+          var thumbHtml = i.image
+            ? '<img src="' + i.image.replace(/"/g, '&quot;') + '" alt="">'
+            : '<i class="fa-solid fa-image"></i>';
+          var name = String(i.productName).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return '<div class="checkout-cart-item">' +
+            '<div class="thumb">' + thumbHtml + '</div>' +
+            '<div class="info"><h4>' + name + '</h4><div class="qty">Qty: ' + i.qty + (i.duration ? ' · ' + i.duration : '') + '</div></div>' +
+            '<div class="line-price">' + fmtMoney(i.price * i.qty) + '</div>' +
+          '</div>';
+        }).join('');
+
+        var itemsBox = document.getElementById('cartCheckoutItems');
+        if (itemsBox) itemsBox.innerHTML = itemsHtml;
+
+        var totalVal = cartCheckoutData.reduce(function(sum, i){ return sum + (i.price * i.qty); }, 0);
+        var totalEl = document.getElementById('cartCheckoutTotal');
+        if (totalEl) totalEl.textContent = fmtMoney(totalVal);
+      }
+    }
+
     // ===== Login / Signup tabs (only present when the visitor is not logged in) =====
     var tabBtns = document.querySelectorAll('.auth-tab-btn');
     tabBtns.forEach(function(btn){
@@ -1575,11 +1656,15 @@ function buildPaymentPage(params, env, loggedInUser) {
         submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
 
         var fd = new FormData();
-        fd.append('productName', ${JSON.stringify(name)});
-        fd.append('productSlug', ${JSON.stringify(slug)});
-        fd.append('category', ${JSON.stringify(category)});
-        fd.append('duration', ${JSON.stringify(duration)});
-        fd.append('price', ${JSON.stringify(String(price))});
+        if (isCartCheckout) {
+          fd.append('items', JSON.stringify(cartCheckoutData));
+        } else {
+          fd.append('productName', ${JSON.stringify(name)});
+          fd.append('productSlug', ${JSON.stringify(slug)});
+          fd.append('category', ${JSON.stringify(category)});
+          fd.append('duration', ${JSON.stringify(duration)});
+          fd.append('price', ${JSON.stringify(String(price))});
+        }
         fd.append('paymentMethod', selectedMethod);
         fd.append('customerName', custName);
         fd.append('customerPhone', custPhone);
@@ -1594,6 +1679,7 @@ function buildPaymentPage(params, env, loggedInUser) {
             if (res && res.success) {
               console.log('EmailJS notification result:', res.emailDebug);
               console.log('Order confirmation email result:', res.orderConfirmDebug);
+              if (isCartCheckout) { try { localStorage.removeItem('sjsubs_cart'); } catch (e) {} }
               document.getElementById('orderFormWrap').style.display = 'none';
               var box = document.getElementById('orderSuccessBox');
               box.style.display = 'block';
@@ -2028,11 +2114,16 @@ export default {
 
           const formData = await request.formData();
 
-          const productName = (formData.get("productName") || "").toString().trim().slice(0, 200);
-          const productSlug = (formData.get("productSlug") || "").toString().trim().slice(0, 200);
-          const category = (formData.get("category") || "").toString().trim().slice(0, 100);
-          const duration = (formData.get("duration") || "").toString().trim().slice(0, 100);
-          const price = Number(formData.get("price") || 0);
+          // Cart checkout sends a JSON array of items instead of single productName/price fields.
+          const itemsRaw = formData.get("items");
+          let items = null;
+          if (itemsRaw && typeof itemsRaw === "string") {
+            try {
+              const parsed = JSON.parse(itemsRaw);
+              if (Array.isArray(parsed)) items = parsed;
+            } catch (e) { items = null; }
+          }
+
           const paymentMethod = (formData.get("paymentMethod") || "").toString().trim().slice(0, 40);
           const customerName = (formData.get("customerName") || "").toString().trim().slice(0, 100);
           const customerPhone = (formData.get("customerPhone") || "").toString().trim().slice(0, 30);
@@ -2041,7 +2132,7 @@ export default {
           const transactionId = (formData.get("transactionId") || "").toString().trim().slice(0, 100);
           const screenshot = formData.get("screenshot");
 
-          if (!productName || !paymentMethod || !customerName || !customerPhone || !customerEmail || !senderAccount || !transactionId) {
+          if (!paymentMethod || !customerName || !customerPhone || !customerEmail || !senderAccount || !transactionId) {
             return json({ error: "Please fill in all required fields." }, 400);
           }
           if (!screenshot || typeof screenshot === "string") {
@@ -2061,17 +2152,78 @@ export default {
           });
           const screenshotUrl = `${env.PUBLIC_BASE_URL}/${key_name}`;
 
-          await addFirestoreDocument(env, "orders", {
-            userUid: loggedInUser.uid,
-            productName, productSlug, category, duration, price,
+          const commonFields = {
             paymentMethod, customerName, customerPhone, customerEmail, senderAccount, transactionId,
-            screenshotUrl,
-            status: "pending",
-            createdAt: new Date()
-          });
+            screenshotUrl, status: "pending", createdAt: new Date()
+          };
+
+          let notifyProductName, notifyCategory, notifyDuration, notifyPrice;
+
+          if (items) {
+            // ===== CART CHECKOUT (multiple products in one order) =====
+            const cleanItems = items
+              .map(it => ({
+                productName: String((it && it.productName) || "").trim().slice(0, 200),
+                productSlug: String((it && it.productSlug) || "").trim().slice(0, 200),
+                category: String((it && it.category) || "").trim().slice(0, 100),
+                duration: String((it && it.duration) || "").trim().slice(0, 100),
+                price: Number((it && it.price) || 0),
+                qty: Math.max(1, Number((it && it.qty) || 1))
+              }))
+              .filter(it => it.productName);
+
+            if (cleanItems.length === 0) {
+              return json({ error: "Your cart is empty. Please add a product before checking out." }, 400);
+            }
+
+            // Every item in this checkout shares one orderGroupId so the admin panel and
+            // "My Orders" can be grouped/recognised as a single cart checkout later if needed.
+            const orderGroupId = crypto.randomUUID();
+            const total = cleanItems.reduce((sum, it) => sum + it.price * it.qty, 0);
+
+            for (const it of cleanItems) {
+              await addFirestoreDocument(env, "orders", {
+                userUid: loggedInUser.uid,
+                orderGroupId,
+                productName: it.qty > 1 ? `${it.productName} × ${it.qty}` : it.productName,
+                productSlug: it.productSlug,
+                category: it.category,
+                duration: it.duration,
+                price: it.price * it.qty,
+                ...commonFields
+              });
+            }
+
+            notifyProductName = cleanItems.map(it => it.qty > 1 ? `${it.productName} × ${it.qty}` : it.productName).join(", ");
+            notifyCategory = cleanItems[0].category;
+            notifyDuration = cleanItems.length > 1 ? `${cleanItems.length} items` : cleanItems[0].duration;
+            notifyPrice = total;
+          } else {
+            // ===== SINGLE PRODUCT CHECKOUT (existing "Order Now" flow) =====
+            const productName = (formData.get("productName") || "").toString().trim().slice(0, 200);
+            const productSlug = (formData.get("productSlug") || "").toString().trim().slice(0, 200);
+            const category = (formData.get("category") || "").toString().trim().slice(0, 100);
+            const duration = (formData.get("duration") || "").toString().trim().slice(0, 100);
+            const price = Number(formData.get("price") || 0);
+
+            if (!productName) {
+              return json({ error: "Please fill in all required fields." }, 400);
+            }
+
+            await addFirestoreDocument(env, "orders", {
+              userUid: loggedInUser.uid,
+              productName, productSlug, category, duration, price,
+              ...commonFields
+            });
+
+            notifyProductName = productName;
+            notifyCategory = category;
+            notifyDuration = duration;
+            notifyPrice = price;
+          }
 
           const emailResult = await sendOrderNotificationEmail(env, {
-            productName, category, duration, price,
+            productName: notifyProductName, category: notifyCategory, duration: notifyDuration, price: notifyPrice,
             paymentMethod, customerName, customerPhone, customerEmail, senderAccount, transactionId,
             screenshotUrl
           }).catch(function(err){ return { ok: false, error: String(err) }; });
@@ -2079,7 +2231,7 @@ export default {
           const orderConfirmResult = await callEmailWorker(env, "/send-order-confirmation", {
             customer_name: customerName,
             customer_email: customerEmail,
-            product_name: productName,
+            product_name: notifyProductName,
             order_time: new Date().toLocaleString("en-PK", { timeZone: "Asia/Karachi" })
           }).catch(function(err){ return { ok: false, error: String(err) }; });
 
