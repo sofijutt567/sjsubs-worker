@@ -9,6 +9,7 @@
 //   GET  /category/:name       → Category products page (KV cached)
 //   GET  /product/:slug        → Product detail page (KV cached + SEO)
 //   GET  /all-products         → All products page (KV cached)
+//   GET  /contact              → Contact Us page (WhatsApp + email + contact form)
 //   GET  /payment.html         → WhatsApp checkout / order confirmation page
 //   GET  /api/me                → Current login status (JSON)
 //   GET  /api/my-orders         → Logged-in user's orders (JSON, requires session cookie)
@@ -175,39 +176,45 @@ const DEFAULT_NOTIFY_EMAIL = "sufiangsufiang50@gmail.com"; // order notification
 // used as a fallback so login still works if you forget, but you should set your own.
 
 // Receiving-account details shown to the customer on the payment page for each method.
-// ⚠️ REPLACE these with your real account details, or set the matching env vars in the
-// Cloudflare dashboard (JAZZCASH_NUMBER, JAZZCASH_TITLE, EASYPAISA_NUMBER, EASYPAISA_TITLE,
-// BANK_NAME, BANK_TITLE, BANK_ACCOUNT) so you don't have to edit code to update them.
-const PAYMENT_METHODS = (env) => ([
-  {
-    id: "jazzcash",
-    label: "JazzCash",
-    logo: "/images/jazzcash-logo.png",
-    color: "#e2001a",
-    accountLabel: "JazzCash Number",
-    accountNumber: (env && env.JAZZCASH_NUMBER) || "0300-0000000",
-    accountTitle: (env && env.JAZZCASH_TITLE) || "SJsubs",
-    senderLabel: "Your JazzCash Number (sender)"
-  },
+// This is only the FALLBACK list — used if no accounts exist yet in the "paymentAccounts"
+// Firestore collection (see getPaymentMethods() below). Once the admin panel gets the
+// "manage accounts" feature, accounts added there will show up automatically and this
+// fallback will only kick in if that collection is empty.
+// ⚠️ You can still edit these fallback details directly, or set env vars in the
+// Cloudflare dashboard (EASYPAISA_NUMBER, EASYPAISA_TITLE, NAYAPAY_NUMBER, NAYAPAY_TITLE,
+// JAZZCASH_NUMBER, JAZZCASH_TITLE).
+// NOTE: JazzCash is kept in the list but marked unavailable (disabled) until further notice.
+const DEFAULT_PAYMENT_METHODS = (env) => ([
   {
     id: "easypaisa",
     label: "EasyPaisa",
     logo: "/images/easypaisa-logo.png",
     color: "#1e7a3c",
     accountLabel: "EasyPaisa Number",
-    accountNumber: (env && env.EASYPAISA_NUMBER) || "0300-0000000",
-    accountTitle: (env && env.EASYPAISA_TITLE) || "SJsubs",
+    accountNumber: (env && env.EASYPAISA_NUMBER) || "0370-8302050",
+    accountTitle: (env && env.EASYPAISA_TITLE) || "Muhammad Sufian Javed",
     senderLabel: "Your EasyPaisa Number (sender)"
   },
   {
-    id: "bank",
-    label: (env && env.BANK_NAME) || "Meezan Bank",
-    logo: "/images/meezan-logo.png",
-    color: "#046a38",
-    accountLabel: "Account / IBAN",
-    accountNumber: (env && env.BANK_ACCOUNT) || "PK00 MEZN 0000 0000 0000 0000",
-    accountTitle: (env && env.BANK_TITLE) || "SJsubs",
-    senderLabel: "Your Account / IBAN (sender)"
+    id: "nayapay",
+    label: "NayaPay",
+    logo: "/images/nayapay-logo.png",
+    color: "#00A99D",
+    accountLabel: "NayaPay Number",
+    accountNumber: (env && env.NAYAPAY_NUMBER) || "0370-8302050",
+    accountTitle: (env && env.NAYAPAY_TITLE) || "Muhammad Sufian Javed",
+    senderLabel: "Your NayaPay Number (sender)"
+  },
+  {
+    id: "jazzcash",
+    label: "JazzCash (Currently Unavailable)",
+    logo: "/images/jazzcash-logo.png",
+    color: "#e2001a",
+    accountLabel: "JazzCash Number",
+    accountNumber: (env && env.JAZZCASH_NUMBER) || "0370-8302050",
+    accountTitle: (env && env.JAZZCASH_TITLE) || "Muhammad Sufian Javed",
+    senderLabel: "Your JazzCash Number (sender)",
+    unavailable: true
   }
 ]);
 
@@ -705,6 +712,53 @@ const COMMON_CSS = `
     -webkit-text-fill-color:transparent;
   }
 
+  /* ===== CONTACT PAGE ===== */
+  .contact-hero{max-width:640px; margin-bottom:34px;}
+  .contact-hero h1{font-size:28px; font-weight:800; margin-bottom:10px;}
+  .contact-hero p{color:var(--muted); font-size:15px; line-height:1.7;}
+  .contact-grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-bottom:40px;
+  }
+  .contact-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:26px 22px; transition:.2s; display:block;
+  }
+  a.contact-card:hover{box-shadow:var(--shadow-lg); transform:translateY(-4px); border-color:transparent;}
+  .contact-card-icon{
+    width:48px; height:48px; border-radius:12px; background:var(--primary-light);
+    color:var(--accent); display:flex; align-items:center; justify-content:center;
+    font-size:20px; margin-bottom:16px;
+  }
+  .contact-card-icon.wa{background:rgba(37,211,102,.12); color:var(--whatsapp);}
+  .contact-card h3{font-size:16px; font-weight:800; margin-bottom:6px;}
+  .contact-card p{color:var(--muted); font-size:13.5px; line-height:1.6; margin-bottom:14px;}
+  .contact-card-cta{
+    color:var(--accent); font-weight:700; font-size:13.5px;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .contact-card-wa .contact-card-cta{color:var(--whatsapp-dark);}
+  .contact-card-static{cursor:default;}
+  .contact-card-static:hover{transform:none; box-shadow:none;}
+  .contact-form-wrap{max-width:640px;}
+  .contact-form-box{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:28px 26px;
+  }
+  .contact-form-box h3{font-size:18px; font-weight:800; margin-bottom:6px;}
+  .contact-form-sub{color:var(--muted); font-size:13.5px; margin-bottom:20px; line-height:1.6;}
+  .contact-form-box textarea{
+    width:100%; resize:vertical; font:inherit; padding:11px 13px;
+    border:1.5px solid var(--line); border-radius:10px; background:var(--bg);
+    color:var(--ink); outline:none;
+  }
+  .contact-form-box textarea:focus{border-color:var(--accent);}
+  @media (max-width:768px){.contact-grid{grid-template-columns:1fr 1fr;}}
+  @media (max-width:480px){
+    .contact-grid{grid-template-columns:1fr;}
+    .contact-hero h1{font-size:22px;}
+    .contact-form-box{padding:20px 16px;}
+  }
+
   @media (max-width:980px){.prod-grid{grid-template-columns:repeat(2,1fr);}}
   @media (max-width:768px){
     .product-detail{grid-template-columns:1fr;}
@@ -937,6 +991,112 @@ function buildFooter() {
 }
 
 // ========== PAGE BUILDERS ==========
+
+function buildContactPage(env) {
+  const waMain = (env && env.WHATSAPP_NUMBER) ? env.WHATSAPP_NUMBER : DEFAULT_WHATSAPP;
+  const waAdmin1 = (env && env.WHATSAPP_ADMIN1) ? env.WHATSAPP_ADMIN1 : DEFAULT_WHATSAPP_ADMIN1;
+  const waAdmin2 = (env && env.WHATSAPP_ADMIN2) ? env.WHATSAPP_ADMIN2 : DEFAULT_WHATSAPP_ADMIN2;
+  const notifyEmail = (env && env.NOTIFY_EMAIL) ? env.NOTIFY_EMAIL : DEFAULT_NOTIFY_EMAIL;
+
+  let html = buildHeader("/", "Contact Us");
+  html += `
+  <div class="container">
+    <section class="section">
+      <div class="breadcrumb"><a href="/">Home</a><i class="fa-solid fa-chevron-right"></i><span>Contact Us</span></div>
+
+      <div class="contact-hero">
+        <h1>Get in Touch</h1>
+        <p>Have a question about an order, a product, or your account? Message us directly on WhatsApp for the fastest reply, or send us your details below.</p>
+      </div>
+
+      <div class="contact-grid">
+        <a href="https://wa.me/${waMain}?text=${encodeURIComponent('Hi, I need help regarding SJsubs.')}" target="_blank" rel="noopener" class="contact-card contact-card-wa">
+          <div class="contact-card-icon wa"><i class="fa-brands fa-whatsapp"></i></div>
+          <h3>Chat on WhatsApp</h3>
+          <p>Fastest way to reach us — usually replies within minutes.</p>
+          <span class="contact-card-cta">Message Now <i class="fa-solid fa-arrow-right"></i></span>
+        </a>
+
+        <a href="mailto:${escapeHtml(notifyEmail)}" class="contact-card">
+          <div class="contact-card-icon"><i class="fa-solid fa-envelope"></i></div>
+          <h3>Email Us</h3>
+          <p>${escapeHtml(notifyEmail)}</p>
+          <span class="contact-card-cta">Send Email <i class="fa-solid fa-arrow-right"></i></span>
+        </a>
+
+        <div class="contact-card contact-card-static">
+          <div class="contact-card-icon"><i class="fa-solid fa-clock"></i></div>
+          <h3>Response Time</h3>
+          <p>Everyday, 10:00 AM – 11:00 PM (PKT)</p>
+        </div>
+      </div>
+
+      <div class="contact-form-wrap">
+        <div class="contact-form-box">
+          <h3>Send Us a Message</h3>
+          <p class="contact-form-sub">Fill in your details — pressing send will open WhatsApp with your message ready to go.</p>
+          <form id="contactForm">
+            <div class="review-form-row">
+              <input type="text" id="cfName" placeholder="Your Name" required>
+              <input type="text" id="cfPhone" placeholder="Phone / WhatsApp Number" required>
+            </div>
+            <input type="text" id="cfSubject" placeholder="Subject (e.g. Order Issue, Product Question)" required style="width:100%; margin-bottom:12px;">
+            <textarea id="cfMessage" rows="5" placeholder="Write your message here..." required></textarea>
+            <div class="wa-dropdown-wrap" style="margin-top:16px;">
+              <div class="wa-dropdown-menu" id="contactWaMenu">
+                <button type="button" class="wa-dropdown-item" data-admin="1"><i class="fa-brands fa-whatsapp"></i> Send to Admin 1</button>
+                <button type="button" class="wa-dropdown-item" data-admin="2"><i class="fa-brands fa-whatsapp"></i> Send to Admin 2</button>
+              </div>
+              <button type="submit" id="contactSendBtn" class="btn-whatsapp"><i class="fa-brands fa-whatsapp"></i> Send Message</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (function(){
+      var waAdmin1 = "${waAdmin1}";
+      var waAdmin2 = "${waAdmin2}";
+      var form = document.getElementById('contactForm');
+      var sendBtn = document.getElementById('contactSendBtn');
+      var menu = document.getElementById('contactWaMenu');
+
+      function buildMessage(){
+        var name = document.getElementById('cfName').value.trim();
+        var phone = document.getElementById('cfPhone').value.trim();
+        var subject = document.getElementById('cfSubject').value.trim();
+        var msg = document.getElementById('cfMessage').value.trim();
+        return "New Contact Message\\n\\nName: " + name + "\\nPhone: " + phone + "\\nSubject: " + subject + "\\nMessage: " + msg;
+      }
+
+      function openWhatsApp(number){
+        if (!form.checkValidity()) { form.reportValidity(); return; }
+        window.open('https://wa.me/' + number + '?text=' + encodeURIComponent(buildMessage()), '_blank', 'noopener');
+        menu.classList.remove('show');
+      }
+
+      sendBtn.addEventListener('click', function(e){
+        e.preventDefault();
+        if (!form.checkValidity()) { form.reportValidity(); return; }
+        menu.classList.toggle('show');
+      });
+
+      menu.querySelectorAll('.wa-dropdown-item').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          openWhatsApp(btn.getAttribute('data-admin') === '1' ? waAdmin1 : waAdmin2);
+        });
+      });
+
+      document.addEventListener('click', function(e){
+        if (!e.target.closest('.wa-dropdown-wrap')) menu.classList.remove('show');
+      });
+    })();
+  </script>`;
+  html += buildFooter();
+  return html;
+}
 
 function buildProductCard(p) {
   const thumb = p.image
@@ -1245,7 +1405,7 @@ function buildAllProductsPage(products) {
   return html;
 }
 
-function buildPaymentPage(params, env, loggedInUser) {
+async function buildPaymentPage(params, env, loggedInUser) {
   const name = params.get('name') || '';
   const price = Number(params.get('price') || 0);
   const oldPrice = Number(params.get('oldPrice') || 0);
@@ -1263,7 +1423,7 @@ function buildPaymentPage(params, env, loggedInUser) {
     return html;
   }
 
-  const methods = PAYMENT_METHODS(env);
+  const methods = await getPaymentMethods(env);
   const waAdmin1 = (env && env.WHATSAPP_ADMIN1) ? env.WHATSAPP_ADMIN1 : DEFAULT_WHATSAPP_ADMIN1;
   const waAdmin2 = (env && env.WHATSAPP_ADMIN2) ? env.WHATSAPP_ADMIN2 : DEFAULT_WHATSAPP_ADMIN2;
 
@@ -1272,9 +1432,10 @@ function buildPaymentPage(params, env, loggedInUser) {
     : `<i class="fa-solid fa-image"></i>`;
 
   // Payment method dropdown — a single <select> listing all methods (JazzCash,
-  // EasyPaisa, Meezan Bank...), so the user picks one from the list instead of cards.
+  // EasyPaisa, NayaPay, JazzCash...), so the user picks one from the list instead of cards.
+  const firstAvailableIdx = methods.findIndex(m => !m.unavailable);
   const methodOptionsHtml = methods.map((m, i) =>
-    `<option value="${m.id}"${i === 0 ? ' selected' : ''}>${escapeHtml(m.label)}</option>`
+    `<option value="${m.id}"${m.unavailable ? ' disabled' : ''}${i === firstAvailableIdx ? ' selected' : ''}>${escapeHtml(m.label)}</option>`
   ).join('');
 
   const accountBoxesHtml = methods.map(m => `<div class="pay-account-box" data-account-for="${m.id}">
@@ -1793,6 +1954,53 @@ async function getAllProducts(env) {
   });
 }
 
+// Reads payment accounts from the "paymentAccounts" Firestore collection — this is what
+// the future admin-panel "manage accounts" feature will read from / write to. Each document
+// is expected to have: label, logo, color, accountLabel, accountNumber, accountTitle,
+// senderLabel, available (boolean), order (number, for display sequence).
+// Until that admin feature exists (or if the collection is empty), it falls back to
+// DEFAULT_PAYMENT_METHODS so checkout keeps working.
+//
+// Cached in KV (short TTL) so the checkout page never has to wait on a live Firestore
+// round-trip to show the accounts — they're already sitting there ready to go, instead of
+// visibly "loading in". When the admin panel gets its "manage accounts" feature, every
+// add/edit/toggle there should also overwrite this same KV key (or just delete it) so the
+// change shows up right away instead of waiting for the TTL to expire.
+const PAYMENT_METHODS_KV_KEY = "paymentAccounts:list";
+const PAYMENT_METHODS_CACHE_TTL = 1800; // 30 minutes
+
+async function getPaymentMethods(env) {
+  const cached = await getFromKV(env, PAYMENT_METHODS_KV_KEY);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) { /* fall through and re-fetch */ }
+  }
+
+  const results = await queryFirestore(env, {
+    from: [{ collectionId: "paymentAccounts" }],
+    orderBy: [{ field: { fieldPath: "order" }, direction: "ASCENDING" }]
+  });
+
+  const methods = (!results || results.length === 0)
+    ? DEFAULT_PAYMENT_METHODS(env)
+    : results.map(function(r) {
+        const isUnavailable = r.available === false;
+        return {
+          id: r.id,
+          label: isUnavailable ? (r.label || "Account") + " (Currently Unavailable)" : (r.label || "Account"),
+          logo: r.logo || "",
+          color: r.color || "#333333",
+          accountLabel: r.accountLabel || "Account Number",
+          accountNumber: r.accountNumber || "",
+          accountTitle: r.accountTitle || "",
+          senderLabel: r.senderLabel || ("Your " + (r.label || "Account") + " Number (sender)"),
+          unavailable: isUnavailable
+        };
+      });
+
+  await setToKV(env, PAYMENT_METHODS_KV_KEY, JSON.stringify(methods), PAYMENT_METHODS_CACHE_TTL);
+  return methods;
+}
+
 async function getRelatedProducts(env, category, excludeSlug) {
   if (!category) return [];
   const results = await queryFirestore(env, {
@@ -2308,6 +2516,23 @@ export default {
         }
       }
 
+      // ==========================================
+      // 🔄 ROUTE: ADMIN PAYMENT ACCOUNTS REFRESH (called by admin panel right after any
+      // payment-account add/edit/delete/toggle-available action). Purges the cached
+      // "paymentAccounts:list" KV entry and rebuilds it immediately from Firestore, so
+      // the change shows up on checkout right away instead of waiting up to 30 minutes
+      // for the TTL to expire.
+      // ==========================================
+      if (path === "/admin/refresh-payment-accounts") {
+        try {
+          await env.SJSUBS_KV.delete(PAYMENT_METHODS_KV_KEY).catch(() => {});
+          const methods = await getPaymentMethods(env); // rebuilds from Firestore + re-caches
+          return json({ success: true, count: methods.length }, 200);
+        } catch (err) {
+          return json({ error: "Refresh failed", detail: String(err) }, 500);
+        }
+      }
+
       try {
         const formData = await request.formData();
         const file = formData.get("file");
@@ -2423,10 +2648,16 @@ export default {
         return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8', 'X-Cache': 'MISS', 'Cache-Control': 'public, max-age=3600' } });
       }
 
+      // ===== /contact (not cached — WhatsApp numbers can change via env vars) =====
+      if (path === '/contact') {
+        const html = buildContactPage(env);
+        return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8', 'Cache-Control': 'public, max-age=3600' } });
+      }
+
       // ===== /payment.html (not cached — always fresh, driven by query params) =====
       if (path === '/payment.html') {
         const loggedInUser = await getLoggedInUser(request, env);
-        const html = buildPaymentPage(url.searchParams, env, loggedInUser);
+        const html = await buildPaymentPage(url.searchParams, env, loggedInUser);
         return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8', 'Cache-Control': 'no-store' } });
       }
 
