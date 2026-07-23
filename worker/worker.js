@@ -642,6 +642,21 @@ const COMMON_CSS = `
   }
   .copy-btn:hover{background:var(--accent-light);}
 
+  .policy-accordion{
+    border:1.5px solid var(--line); border-radius:12px; margin-bottom:18px; overflow:hidden;
+  }
+  .policy-accordion summary{
+    list-style:none; cursor:pointer; padding:13px 16px; font-size:13px; font-weight:700;
+    color:var(--ink); display:flex; align-items:center; gap:8px; background:var(--primary-light);
+  }
+  .policy-accordion summary::-webkit-details-marker{display:none;}
+  .policy-accordion summary i:first-child{color:var(--accent); font-size:12px;}
+  .policy-accordion summary .chev{margin-left:auto; font-size:11px; color:var(--muted); transition:.2s;}
+  .policy-accordion[open] summary .chev{transform:rotate(180deg);}
+  .policy-body{padding:14px 16px 16px; font-size:12.5px; color:var(--muted); line-height:1.7;}
+  .policy-body p{margin-bottom:8px;}
+  .policy-body ul{padding-left:18px; display:flex; flex-direction:column; gap:6px;}
+
   .order-form{display:none; flex-direction:column; gap:14px;}
   .order-form.show{display:flex;}
   .form-group{display:flex; flex-direction:column; gap:6px;}
@@ -1511,6 +1526,20 @@ async function buildPaymentPage(params, env, loggedInUser) {
         </div>
 
         ${accountBoxesHtml}
+
+        <details class="policy-accordion">
+          <summary><i class="fa-solid fa-shield-halved"></i> Refund Policy <i class="fa-solid fa-chevron-down chev"></i></summary>
+          <div class="policy-body">
+            <p>All products on SJsubs are digital subscription services delivered instantly after payment verification.</p>
+            <ul>
+              <li>Once your order is delivered / activated, it is non-refundable and non-exchangeable.</li>
+              <li>Refunds are only considered if the order wasn't delivered within 24 hours, you were charged but no order was created due to a technical error, or the product delivered was different from what you ordered.</li>
+              <li>Refund requests must be made within 24 hours of placing the order, along with your Transaction ID and payment screenshot.</li>
+              <li>Approved refunds are sent back to the same account used for payment, within 3–7 working days.</li>
+              <li>Your order is only processed once we've actually received and confirmed your payment in our account — submitting this form does not mean instant processing.</li>
+            </ul>
+          </div>
+        </details>
 
         <form id="orderForm" class="order-form" novalidate>
           <div class="pay-divider"></div>
