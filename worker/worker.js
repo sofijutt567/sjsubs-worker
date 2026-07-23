@@ -806,17 +806,30 @@ const COMMON_CSS = `
 
 // ========== HTML BUILDERS ==========
 
-function buildHeader(fallbackUrl, pageTitle, extraMeta) {
+function buildHeader(fallbackUrl, pageTitle, extraMeta, seoTitle) {
   fallbackUrl = fallbackUrl || "/";
   pageTitle = pageTitle || "";
   extraMeta = extraMeta || "";
+  // seoTitle overrides just the <title> tag (what Google shows in search results),
+  // while pageTitle still controls the visible header bar text on the page itself.
+  // Falls back to pageTitle when not provided, so existing callers are unaffected.
+  const titleTagText = seoTitle || pageTitle;
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-E5B89LLSLZ"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-E5B89LLSLZ');
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${pageTitle ? escapeHtml(pageTitle) + " — " : ""}SJsubs — Premium Subscriptions Store</title>
+<title>${titleTagText ? escapeHtml(titleTagText) + " — " : ""}SJsubs — Premium Subscriptions Store</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1194,7 +1207,7 @@ function buildProductDetailPage(product, siteUrl, relatedProducts) {
   const canonicalUrl = `${siteUrl}/product/${encodeURIComponent(product.slug || '')}`;
   const extraMeta = `<meta name="description" content="${escapeHtml(metaDesc)}"><meta name="keywords" content="${escapeHtml(product.metaKeywords || product.category || '')}"><meta property="og:title" content="${escapeHtml(metaTitle)}"><meta property="og:description" content="${escapeHtml(metaDesc)}">${product.image ? `<meta property="og:image" content="${escapeHtml(product.image)}">` : ''}<meta property="og:type" content="product"><meta property="og:url" content="${canonicalUrl}"><link rel="canonical" href="${canonicalUrl}">`;
 
-  let html = buildHeader("/", title, extraMeta);
+  let html = buildHeader("/", title, extraMeta, metaTitle);
   html += `<div class="container"><section class="section">
     <div class="breadcrumb"><a href="/">Home</a><i class="fa-solid fa-chevron-right"></i><a href="/category/${encodeURIComponent(product.category || '')}">${escapeHtml(product.category || '')}</a><i class="fa-solid fa-chevron-right"></i><span>${escapeHtml(product.name || '')}</span></div>
     <div class="product-detail">
@@ -2522,6 +2535,7 @@ export default {
             await env.SJSUBS_KV.delete("cat:" + product.category).catch(() => {});
           }
           await env.SJSUBS_KV.delete("page:all-products").catch(() => {});
+          await env.SJSUBS_KV.delete("sitemap:xml").catch(() => {});
 
           return json({ success: true, slug, cached: true }, 200);
         } catch (err) {
@@ -2539,6 +2553,7 @@ export default {
           if (slug) await env.SJSUBS_KV.delete("prod:" + slug).catch(() => {});
           if (category) await env.SJSUBS_KV.delete("cat:" + category).catch(() => {});
           await env.SJSUBS_KV.delete("page:all-products").catch(() => {});
+          await env.SJSUBS_KV.delete("sitemap:xml").catch(() => {});
           return json({ success: true }, 200);
         } catch (err) {
           return json({ error: "Uncache failed", detail: String(err) }, 500);
@@ -2597,6 +2612,66 @@ export default {
     // ==========================================
 
     try {
+      // ===== /robots.txt — tells crawlers what's crawlable and where the sitemap is =====
+      if (path === '/robots.txt') {
+        const robotsTxt = `User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /payment.html
+
+Sitemap: ${siteUrl}/sitemap.xml
+`;
+        return new Response(robotsTxt, {
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'Cache-Control': 'public, max-age=86400' }
+        });
+      }
+
+      // ===== /sitemap.xml — auto-generated from every product + category in Firestore, =====
+      // ===== so new products are picked up by Google without any manual step. =====
+      // Cached in KV for an hour (same pattern as category/product pages) so a crawler
+      // hitting this doesn't cause a fresh Firestore query on every request.
+      if (path === '/sitemap.xml') {
+        const sitemapKvKey = 'sitemap:xml';
+        let xml = await getFromKV(env, sitemapKvKey);
+
+        if (!xml) {
+          const products = await getAllProducts(env);
+          const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
+
+          const staticUrls = [
+            { loc: `${siteUrl}/`, priority: '1.0' },
+            { loc: `${siteUrl}/all-products`, priority: '0.9' },
+            { loc: `${siteUrl}/contact`, priority: '0.5' }
+          ];
+          const categoryUrls = categories.map(c => ({
+            loc: `${siteUrl}/category/${encodeURIComponent(c)}`,
+            priority: '0.8'
+          }));
+          const productUrls = products.filter(p => p.slug).map(p => ({
+            loc: `${siteUrl}/product/${encodeURIComponent(p.slug)}`,
+            lastmod: p.updatedAt ? new Date(p.updatedAt).toISOString() : null,
+            priority: '0.7'
+          }));
+
+          const allUrls = [...staticUrls, ...categoryUrls, ...productUrls];
+          xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${allUrls.map(u => `  <url>
+    <loc>${escapeHtml(u.loc)}</loc>${u.lastmod ? `
+    <lastmod>${u.lastmod}</lastmod>` : ''}
+    <priority>${u.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+
+          await setToKV(env, sitemapKvKey, xml, 3600);
+        }
+
+        return new Response(xml, {
+          headers: { 'Content-Type': 'application/xml;charset=UTF-8', 'Cache-Control': 'public, max-age=3600' }
+        });
+      }
+
       // ===== /api/me (used by the header to show/hide the profile icon) =====
       if (path === '/api/me') {
         const user = await getLoggedInUser(request, env);
